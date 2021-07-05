@@ -44,8 +44,10 @@ class PaginateFirestore extends StatefulWidget {
     this.header,
     this.footer,
     this.isLive = false,
+    this.sliver = false,
   }) : super(key: key);
 
+  final bool sliver;
   final Widget bottomLoader;
   final Widget emptyDisplay;
   final SliverGridDelegate gridDelegate;
@@ -90,11 +92,15 @@ class _PaginateFirestoreState extends State<PaginateFirestore> {
       bloc: _cubit,
       builder: (context, state) {
         if (state is PaginationInitial) {
-          return widget.initialLoader;
+          return widget.sliver?
+            SliverToBoxAdapter(child: widget.initialLoader):
+            widget.initialLoader;
         } else if (state is PaginationError) {
           return (widget.onError != null)
               ? widget.onError!(state.error)
-              : ErrorDisplay(exception: state.error);
+              : widget.sliver?
+              SliverToBoxAdapter(child: ErrorDisplay(exception: state.error)):
+              ErrorDisplay(exception: state.error);
         } else {
           final loadedState = state as PaginationLoaded;
           if (widget.onLoaded != null) {
@@ -105,7 +111,9 @@ class _PaginateFirestoreState extends State<PaginateFirestore> {
           }
 
           if (loadedState.documentSnapshots.isEmpty) {
-            return widget.emptyDisplay;
+            return widget.sliver?
+              SliverToBoxAdapter(child: widget.emptyDisplay):
+              widget.emptyDisplay;
           }
           return widget.itemBuilderType == PaginateBuilderType.listView
               ? _buildListView(loadedState)
@@ -200,6 +208,43 @@ class _PaginateFirestoreState extends State<PaginateFirestore> {
   }
 
   Widget _buildListView(PaginationLoaded loadedState) {
+    var sliverWidget = SliverPadding(
+      padding: widget.padding,
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+              (context, index) {
+            final itemIndex = index ~/ 2;
+            if (index.isEven) {
+              if (itemIndex >= loadedState.documentSnapshots.length) {
+                _cubit!.fetchPaginatedList();
+                return widget.bottomLoader;
+              }
+              return widget.itemBuilder(itemIndex, context,
+                  loadedState.documentSnapshots[itemIndex]);
+            }
+            return widget.separator;
+          },
+          semanticIndexCallback: (widget, localIndex) {
+            if (localIndex.isEven) {
+              return localIndex ~/ 2;
+            }
+            // ignore: avoid_returning_null
+            return null;
+          },
+          childCount: max(
+              0,
+              (loadedState.hasReachedEnd
+                  ? loadedState.documentSnapshots.length
+                  : loadedState.documentSnapshots.length + 1) *
+                  2 -
+                  1),
+        ),
+      ),
+    );
+    if(widget.sliver==true) {
+      return sliverWidget;
+    }
+
     var listView = CustomScrollView(
       reverse: widget.reverse,
       controller: widget.scrollController,
@@ -208,39 +253,7 @@ class _PaginateFirestoreState extends State<PaginateFirestore> {
       physics: widget.physics,
       slivers: [
         if (widget.header != null) widget.header!,
-        SliverPadding(
-          padding: widget.padding,
-          sliver: SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final itemIndex = index ~/ 2;
-                if (index.isEven) {
-                  if (itemIndex >= loadedState.documentSnapshots.length) {
-                    _cubit!.fetchPaginatedList();
-                    return widget.bottomLoader;
-                  }
-                  return widget.itemBuilder(itemIndex, context,
-                      loadedState.documentSnapshots[itemIndex]);
-                }
-                return widget.separator;
-              },
-              semanticIndexCallback: (widget, localIndex) {
-                if (localIndex.isEven) {
-                  return localIndex ~/ 2;
-                }
-                // ignore: avoid_returning_null
-                return null;
-              },
-              childCount: max(
-                  0,
-                  (loadedState.hasReachedEnd
-                              ? loadedState.documentSnapshots.length
-                              : loadedState.documentSnapshots.length + 1) *
-                          2 -
-                      1),
-            ),
-          ),
-        ),
+        sliverWidget,
         if (widget.footer != null) widget.footer!,
       ],
     );
