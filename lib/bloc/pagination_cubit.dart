@@ -13,8 +13,10 @@ class PaginationCubit extends Cubit<PaginationState> {
     this._limit,
     this._startAfterDocument, {
     this.isLive = false,
+    this.sourceStrategy = SourceStrategy.serverElseCache,
   }) : super(PaginationInitial());
 
+  final SourceStrategy sourceStrategy;
   DocumentSnapshot? _lastDocument;
   final int _limit;
   final Query _query;
@@ -52,8 +54,26 @@ class PaginationCubit extends Cubit<PaginationState> {
 
       _streams.add(listener);
     } else {
-      final querySnapshot = await localQuery.get();
+      final querySnapshot = await _getLocalQuery(localQuery);
       _emitPaginatedState(querySnapshot.docs);
+    }
+  }
+
+  _getLocalQuery<T>(Query query) async {
+    switch(sourceStrategy){
+      case SourceStrategy.serverElseCache:
+        return query.get(GetOptions(source: Source.serverAndCache));
+      case SourceStrategy.cacheElseServer:
+        var get = await query.get(GetOptions(source: Source.cache));
+        if(get.size==0)
+          get = await query.get(GetOptions(source: Source.server));
+        return get;
+      case SourceStrategy.serverOnly:
+        return query.get(GetOptions(source: Source.server));
+      case SourceStrategy.cacheOnly:
+        return query.get(GetOptions(source: Source.cache));
+      default:
+        return query.get();
     }
   }
 
@@ -69,7 +89,7 @@ class PaginationCubit extends Cubit<PaginationState> {
       } else if (state is PaginationLoaded) {
         final loadedState = state as PaginationLoaded;
         if (loadedState.hasReachedEnd) return;
-        final querySnapshot = await localQuery.get();
+        final querySnapshot = await _getLocalQuery(localQuery);
         _emitPaginatedState(
           querySnapshot.docs,
           previousList:
@@ -136,4 +156,11 @@ class PaginationCubit extends Cubit<PaginationState> {
       listener.cancel();
     }
   }
+}
+
+enum SourceStrategy {
+  serverOnly,
+  cacheOnly,
+  serverElseCache,
+  cacheElseServer,
 }

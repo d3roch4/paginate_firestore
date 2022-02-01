@@ -45,8 +45,10 @@ class PaginateFirestore extends StatefulWidget {
     this.footer,
     this.isLive = false,
     this.sliver = false,
+    this.sourceStrategy = SourceStrategy.serverElseCache
   }) : super(key: key);
 
+  final SourceStrategy sourceStrategy;
   final bool sliver;
   final Widget bottomLoader;
   final Widget emptyDisplay;
@@ -157,6 +159,7 @@ class _PaginateFirestoreState extends State<PaginateFirestore> {
       widget.itemsPerPage,
       widget.startAfterDocument,
       isLive: widget.isLive,
+      sourceStrategy: widget.sourceStrategy,
     )..fetchPaginatedList();
     super.initState();
   }
